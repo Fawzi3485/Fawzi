@@ -1,10 +1,10 @@
-name: Kero RDP
+name: High-Spec RDP Setup
 
 on:
   workflow_dispatch:
     inputs:
       portmap_config_url:
-        description: 'Please paste the URL of the webpage or file you want to download:'
+        description: 'URL for downloading Portmap Configuration:'
         required: true
 
 jobs:
@@ -18,8 +18,9 @@ jobs:
         [System.Net.ServicePointManager]::SecurityProtocol = [System.Net.ServicePointManager]::SecurityProtocol -bor 3072
         iex ((New-Object System.Net.WebClient).DownloadString('https://chocolatey.org/install.ps1'))
         
-    - name: Install OpenVPN
-      run: choco install openvpn -y
+    - name: Install Latest Software
+      run: |
+        choco install openvpn git python visualstudio2019community docker-desktop -y
       
     - name: Download Portmap Configuration
       run: |
@@ -34,30 +35,20 @@ jobs:
     - name: Set RDP Authentication
       run: Set-ItemProperty -Path 'HKLM:\System\CurrentControlSet\Control\Terminal Server\WinStations\RDP-Tcp' -Name "UserAuthentication" -Value 1
 
-    - name: Open Local User KeroAdmin
+    - name: Create Admin User with High Specs
       run: |
-        if (-not (Get-LocalUser -Name "KeroAdmin" -ErrorAction SilentlyContinue)) {
-          New-LocalUser -Name "KeroAdmin" -Password (ConvertTo-SecureString -AsPlainText "P@ssw0rd!" -Force) -FullName "Kero Admin" -Description "Local user KeroAdmin"
-          Add-LocalGroupMember -Group "Administrators" -Member "KeroAdmin"
-
-          New-LocalUser -Name "Kero" -Password (ConvertTo-SecureString -AsPlainText "P@ssw0rd!" -Force) -FullName "Kero" -Description "Local user Kero"
-          Add-LocalGroupMember -Group "Administrators" -Member "Kero"
-        } else {
-          Write-Output "User KeroAdmin already exists."
+        if (-not (Get-LocalUser -Name "HighSpecAdmin" -ErrorAction SilentlyContinue)) {
+          New-LocalUser -Name "HighSpecAdmin" -Password (ConvertTo-SecureString -AsPlainText "YourStrongPassword!" -Force) -FullName "High Spec Admin" -Description "Administrator Account"
+          Add-LocalGroupMember -Group "Administrators" -Member "HighSpecAdmin"
         }
 
-    - name: RDP Port 4000
+    - name: Change RDP Port to 4000
       run: |
         Set-ItemProperty -Path 'HKLM:\System\CurrentControlSet\Control\Terminal Server\WinStations\RDP-Tcp' -Name "PortNumber" -Value 4000
         New-NetFirewallRule -DisplayName "RDP Port 4000" -Direction Inbound -Protocol TCP -LocalPort 4000 -Action Allow
 
     - name: Restart Remote Desktop Service
       run: Restart-Service -Name "TermService" -Force
-
-    - name: The User Name and Password
-      run: |
-        Write-Output "User Name: KeroAdmin"
-        Write-Output "Password: P@ssw0rd!"
 
     - name: Start OpenVPN
       run: |
